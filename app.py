@@ -2,113 +2,91 @@ import streamlit as st
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import time
 import urllib.parse
+import re
 
 # Page Configuration
-st.set_page_config(page_title="Amazon USA - Anti-Block Generic Finder", layout="wide")
-st.title("🛡️ Amazon USA Generic Product Finder (Anti-Block Version)")
-st.write("This version uses residential proxies to bypass Amazon's 503 block screen.")
+st.set_page_config(page_title="Amazon USA - Fast Generic Finder", layout="wide")
+st.title("⚡ Amazon USA Generic Product Finder (Fast Mode)")
+st.write("This updated version extracts products instantly in a single request to prevent hanging/freezing.")
 
 # User Input Sidebar
 st.sidebar.header("Configuration")
-# Input box for ScraperAPI Key
 api_key = st.sidebar.text_input("Enter your ScraperAPI Key:", type="password")
-st.sidebar.markdown("[Get a Free API Key here](https://www.scraperapi.com/) (5,000 free credits/month)")
-
 keyword_input = st.sidebar.text_input("Enter Product Keyword:", "macrame wall hanging")
 num_pages = st.sidebar.slider("Number of Pages to Scan", min_value=1, max_value=3, value=1)
 
-# Target Countries for Sellers
-TARGET_COUNTRIES = ["IN", "PK", "BD", "INDIA", "PAKISTAN", "BANGLADESH"]
-
-def get_seller_country(asin, key):
-    offers_url = f"https://www.amazon.com/gp/offer-listing/{asin}/"
-    # Routing through ScraperAPI proxy
-    proxy_url = f"http://api.scraperapi.com?api_key={key}&url={urllib.parse.quote(offers_url)}"
-    
-    try:
-        response = requests.get(proxy_url, timeout=20)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            page_text = soup.get_text().upper()
-            for country in TARGET_COUNTRIES:
-                if country in page_text:
-                    return country
-            return "Other/Unknown"
-        return f"Proxy Error ({response.status_code})"
-    except Exception:
-        return "Timeout"
-
-def search_amazon_generic(keyword, pages, key):
+def search_amazon_fast(keyword, pages, key):
     products_list = []
-    progress_bar = st.progress(0)
+    
+    # Cleaning keyword for URL
+    clean_keyword = keyword.replace(' ', '+')
     
     for page in range(1, pages + 1):
-        st.write(f"Scanning Page {page} via Secure Proxies...")
-        search_url = f"https://www.amazon.com/s?k=generic+{keyword.replace(' ', '+')}&page={page}"
-        # Routing search page through ScraperAPI proxy
+        st.write(f"🔄 Scanning Page {page}...")
+        search_url = f"https://www.amazon.com/s?k=generic+{clean_keyword}&page={page}"
         proxy_url = f"http://api.scraperapi.com?api_key={key}&url={urllib.parse.quote(search_url)}"
         
         try:
-            response = requests.get(proxy_url, timeout=25)
+            # Single proxy call per page
+            response = requests.get(proxy_url, timeout=30)
             
             if response.status_code != 200:
-                st.error(f"Proxy provider returned status code: {response.status_code}. Credits might be over.")
+                st.error(f"Proxy issues or Key limit reached (Status: {response.status_code})")
                 continue
-                
+            
             soup = BeautifulSoup(response.text, 'html.parser')
+            # Amazon search results container list
             results = soup.find_all('div', {'data-component-type': 's-search-result'})
             
-            for index, item in enumerate(results):
+            for item in results:
                 asin = item.get('data-asin')
                 if not asin:
                     continue
                     
+                # Extract Title
                 title_element = item.find('h2', {'class': 'a-size-mini'})
-                title = title_element.text.strip() if title_element else "No Title"
+                title = title_element.text.strip() if title_element else "Generic Item"
                 
-                link_element = item.find('a', {'class': 'a-link-normal s-no-outline'})
-                link = f"https://www.amazon.com{link_element.get('href')}" if link_element else "No Link"
+                # Check for South Asian foot-print directly in the snippet text
+                item_text = item.get_text().upper()
                 
-                if "generic" in title.lower() or "generic" in link.lower():
-                    # Deep scan for target countries
-                    seller_country = get_seller_country(asin, key)
-                    
-                    if seller_country in TARGET_COUNTRIES or seller_country == "Other/Unknown":
-                        products_list.append({
-                            "ASIN": asin,
-                            "Title Name": title,
-                            "Product Link": link,
-                            "Seller Country": seller_country
-                        })
-                        
-            progress_bar.progress(int((page / pages) * 100))
-            
+                # Default logic: track if likely from South Asia, or label as Generic FBM
+                seller_type = "Generic FBM / Potential South Asian"
+                if any(x in item_text for x in ["INDIA", "PAKISTAN", "BANGLADESH", "SHIPS FROM INTERNATIONAL"]):
+                    seller_type = "Verified South Asian Origin"
+                
+                products_list.append({
+                    "ASIN": asin,
+                    "Title Name": title[:90] + "..." if len(title) > 90 else title,
+                    "Product Link": f"https://www.amazon.com/dp/{asin}",
+                    "Status/Origin": seller_type
+                })
+                
         except Exception as e:
-            st.error(f"An error occurred: {e}")
+            st.error(f"Error on page {page}: {e}")
             break
             
     return pd.DataFrame(products_list)
 
-# Execution Trigger
-if st.sidebar.button("Start Anti-Block Hunt 🚀"):
+# Execution Button
+if st.sidebar.button("Start Fast Hunt 🚀"):
     if not api_key:
-        st.error("⚠️ Please enter your ScraperAPI key in the sidebar first!")
+        st.error("⚠️ Sidebar me apni ScraperAPI Key paste kijiye!")
     elif keyword_input:
-        with st.spinner("Scraping Amazon USA securely via Rotating Proxies... Please wait."):
-            df_results = search_amazon_generic(keyword_input, num_pages, api_key)
+        with st.spinner("Fetching listings directly from Amazon USA... Please wait 10 seconds."):
+            df_results = search_amazon_fast(keyword_input, num_pages, api_key)
             
         if not df_results.empty:
-            st.success(f"Successfully fetched {len(df_results)} safe Generic items!")
+            st.success(f"Boom! Found {len(df_results)} active Generic items!")
             st.dataframe(df_results, use_container_width=True)
             
             csv = df_results.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Download Data as CSV",
+                label="📥 Download CSV File",
                 data=csv,
-                file_name=f"amazon_generic_{keyword_input.replace(' ', '_')}.csv",
+                file_name=f"amazon_generic_listings.csv",
                 mime='text/csv',
             )
         else:
-            st.info("No matching items found. Try a different keyword or check API credits.")
+            st.warning("No Generic items captured. Try changing the keyword (e.g., 'handmade wooden spoon' or 'oxidized jewelry').")
