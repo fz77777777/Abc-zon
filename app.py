@@ -36,7 +36,7 @@ def get_seller_country(asin):
         # Deliberate small delay to mimic human behavior
         time.sleep(random.uniform(1.0, 2.5))
         response = requests.get(offers_url, headers=HEADERS, timeout=10)
-        if response.status_config == 200:
+        if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             page_text = soup.get_text().upper()
             
