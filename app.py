@@ -18,34 +18,34 @@ num_pages = st.sidebar.slider("Number of Pages to Scan", min_value=1, max_value=
 # Target Countries for Sellers
 TARGET_COUNTRIES = ["IN", "PK", "BD", "INDIA", "PAKISTAN", "BANGLADESH"]
 
-# Headers to avoid Amazon Captcha/Blocking
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://www.google.com/"
-}
+# Advanced rotation of User-Agents to mimic different browsers
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
+]
 
 def get_seller_country(asin):
-    """
-    Fetches the seller's country by looking at the 'All Offers' page for the ASIN.
-    """
     offers_url = f"https://www.amazon.com/gp/offer-listing/{asin}/"
+    headers = {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.amazon.com/"
+    }
     try:
-        time.sleep(random.uniform(1.0, 2.5))
-        response = requests.get(offers_url, headers=HEADERS, timeout=10)
+        time.sleep(random.uniform(2.0, 4.0)) # Increased delay
+        response = requests.get(offers_url, headers=headers, timeout=12)
         
-        # FIXED: Changed status_config to status_code
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             page_text = soup.get_text().upper()
-            
             for country in TARGET_COUNTRIES:
                 if country in page_text:
                     return country
-        return "Other/Unknown"
+            return "Other/Unknown"
+        return f"Block ({response.status_code})"
     except Exception:
-        return "Error/Blocked"
+        return "Timeout"
 
 def search_amazon_generic(keyword, pages):
     products_list = []
@@ -55,12 +55,18 @@ def search_amazon_generic(keyword, pages):
         st.write(f"Scanning Page {page}...")
         search_url = f"https://www.amazon.com/s?k=generic+{keyword.replace(' ', '+')}&page={page}"
         
+        headers = {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/"
+        }
+        
         try:
-            time.sleep(random.uniform(2.0, 4.0))
-            response = requests.get(search_url, headers=HEADERS, timeout=15)
+            time.sleep(random.uniform(3.0, 6.0)) # Slower scraping helps prevent 503
+            response = requests.get(search_url, headers=headers, timeout=15)
             
             if response.status_code != 200:
-                st.warning(f"Amazon blocked the request on Page {page} (Status Code: {response.status_code}). Try again later.")
+                st.error(f"Amazon blocked the request on Page {page} (Status Code: {response.status_code}). Try scanning fewer pages or running locally.")
                 continue
                 
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -99,11 +105,11 @@ def search_amazon_generic(keyword, pages):
 # Main App Execution Trigger
 if st.sidebar.button("Start Product Hunt 🚀"):
     if keyword_input:
-        with st.spinner("Scraping Amazon USA... Please hold tight"):
+        with st.spinner("Scraping Amazon USA... Please wait"):
             df_results = search_amazon_generic(keyword_input, num_pages)
             
         if not df_results.empty:
-            st.success(f"Found {len(df_results)} potential Generic items!")
+            st.success(f"Successfully fetched {len(df_results)} potential Generic items!")
             st.dataframe(df_results, use_container_width=True)
             
             csv = df_results.to_csv(index=False).encode('utf-8')
@@ -114,6 +120,6 @@ if st.sidebar.button("Start Product Hunt 🚀"):
                 mime='text/csv',
             )
         else:
-            st.info("No matching Generic items found. Try another keyword.")
+            st.info("No matching Generic items found due to strict Amazon anti-bot shields. Try later or scale down the scan pages.")
     else:
         st.error("Please enter a keyword first.")
